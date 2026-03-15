@@ -22,6 +22,8 @@
         {{ uploading ? '检测中...' : '开始检测' }}
       </button>
       <text v-if="errorMsg" class="error-text">{{ errorMsg }}</text>
+      <!-- 只有当有结果时才显示填写问卷按钮 -->
+      <button v-if="result" @click="gotoQuestionnaire" class="fill-btn">填写问卷</button>
     </view>
 
     <!-- 检测结果卡片（有数据才显示） -->
@@ -121,16 +123,29 @@ export default {
       this.errorMsg = '';
 
       uni.uploadFile({
-        url: 'http://127.0.0.1:8080/upload',  // 你的后端地址（端口已改为8080）
+        url: 'http://192.168.153.152:8080/upload',  // 后端地址
         filePath: this.imageUrl,
         name: 'file',
         success: (res) => {
           if (res.statusCode === 200) {
-            const data = JSON.parse(res.data);
-            if (data.success) {
-              this.result = data;   // 保存完整返回结果
-            } else {
-              this.errorMsg = data.message || '检测失败';
+            try {
+              const data = JSON.parse(res.data);
+              if (data.success) {
+                this.result = data;   // 保存完整返回结果
+                // 成功后，自动将检测结果存入缓存，方便问卷页面读取
+                try {
+                  uni.setStorageSync('temp_detections', data.detections);
+                  console.log('检测结果已存入缓存');
+                } catch (e) {
+                  console.error('存储检测结果失败', e);
+                  uni.showToast({ title: '数据存储失败', icon: 'none' });
+                }
+              } else {
+                this.errorMsg = data.message || '检测失败';
+              }
+            } catch (e) {
+              console.error('解析返回数据失败', e);
+              this.errorMsg = '服务器返回数据格式错误';
             }
           } else {
             this.errorMsg = `服务器响应异常 (${res.statusCode})`;
@@ -138,11 +153,21 @@ export default {
         },
         fail: (err) => {
           console.error('上传失败', err);
-          this.errorMsg = '网络错误，请检查后端服务是否运行在8080端口';
+          this.errorMsg = '网络错误，请检查网络连接或后端服务';
         },
         complete: () => {
           this.uploading = false;
         }
+      });
+    },
+
+    // 跳转到问卷页面
+    gotoQuestionnaire() {
+      if (!this.result) return;
+      // 修改：不再通过 URL 传递 data，直接跳转
+      // 因为数据已经在 uploadImage 成功回调中存入了 'temp_detections'
+      uni.navigateTo({
+        url: '/pages/questionnaire/questionnaire'
       });
     },
 
@@ -238,6 +263,9 @@ export default {
 /* 操作栏 */
 .action-bar {
   margin-bottom: 40rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
 }
 button {
   width: 100%;
@@ -254,12 +282,20 @@ button[disabled] {
   opacity: 0.5;
   box-shadow: none;
 }
+/* 填充按钮样式（用于次要操作） */
+.fill-btn {
+  background: white;
+  color: #1F8A9E;
+  border: 2rpx solid #1F8A9E;
+  box-shadow: none;
+}
+
 .error-text {
   display: block;
   text-align: center;
   color: #D92B4B;
   font-size: 26rpx;
-  margin-top: 20rpx;
+  margin-top: 10rpx;
 }
 
 /* 结果区域 */
